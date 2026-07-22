@@ -231,8 +231,14 @@ async def q3_answer(request: Request):
             "confidence": float(out.get("confidence", 0.9)),
             "answerable": True
         }
-    except Exception:
-        return {"answer": "I don't know", "citations": [], "confidence": 0.1, "answerable": False}
+    except Exception as e:
+        return {
+            "error": str(e),
+            "answer": "I don't know",
+            "citations": [],
+            "confidence": 0.1,
+            "answerable": False
+        }
 
 # ================= Q4: /vector-search =================
 def cosine_sim(a, b):
