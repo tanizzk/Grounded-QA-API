@@ -286,152 +286,27 @@ async def vector_search(request: Request):
     return {"matches": [d["doc_id"] for d in top_k_docs[:rerank_top_n]]}
 
 # ================= Q5: GraphRAG Endpoints =================
-# ================= Q5: GraphRAG Endpoints =================
 @app.post("/extract-graph")
 async def extract_graph(request: Request):
     body = await request.json()
     text = body.get("text", "")
-
-    if not text.strip():
-        return {"entities": [], "relationships": []}
-
-    prompt = f"""
-You are an information extraction engine.
-
-Extract EVERY explicitly mentioned entity and EVERY explicitly stated relationship.
-
-Rules:
-
-1. Entity types MUST be one of:
-- Person
-- Organization
-- Product
-- Framework
-
-2. Relationship types MUST be one of:
-- FOUNDED
-- DEVELOPED
-- INTEGRATED_INTO
-- HIRED
-- AUTHORED
-
-3. Do NOT invent entities.
-
-4. Do NOT infer relationships.
-
-5. Include ALL entities even if they appear only once.
-
-6. Remove duplicate entities.
-
-7. Return ONLY valid JSON.
-
-TEXT:
-{text}
-
-Return exactly:
-
-{{
-  "entities":[
-      {{
-          "name":"...",
-          "type":"..."
-      }}
-  ],
-  "relationships":[
-      {{
-          "source":"...",
-          "target":"...",
-          "relation":"..."
-      }}
-  ]
-}}
-"""
-
+    prompt = (
+        "You are an expert GraphRAG Entity and Relationship extractor.\n"
+        "Extract entities and relationships from the provided text according to these EXACT rules:\n"
+        "Allowed Entity Types: Person, Organization, Product, Framework\n"
+        "Allowed Relationship Types: FOUNDED, DEVELOPED, INTEGRATED_INTO, HIRED, AUTHORED\n\n"
+        "Return strictly JSON in this format:\n"
+        "{\n"
+        "  \"entities\": [{\"name\": \"Entity Name\", \"type\": \"AllowedType\"}],\n"
+        "  \"relationships\": [{\"source\": \"Entity1\", \"target\": \"Entity2\", \"relation\": \"ALLOWED_RELATION\"}]\n"
+        "}\n\n"
+        f"TEXT:\n{text}"
+    )
     try:
-        out = parse_json(
-            await chat(
-                [
-                    {
-                        "role": "system",
-                        "content": "You are a precise information extraction engine. Never omit explicit entities or explicit relationships."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                model="gpt-4o",
-                max_tokens=1500
-            )
-        )
-
-        allowed_entity_types = {
-            "Person",
-            "Organization",
-            "Product",
-            "Framework"
-        }
-
-        allowed_relations = {
-            "FOUNDED",
-            "DEVELOPED",
-            "INTEGRATED_INTO",
-            "HIRED",
-            "AUTHORED"
-        }
-
-        entities = []
-        seen = set()
-
-        for e in out.get("entities", []):
-            name = str(e.get("name", "")).strip()
-            typ = str(e.get("type", "")).strip()
-
-            if not name or typ not in allowed_entity_types:
-                continue
-
-            key = (name.lower(), typ)
-
-            if key in seen:
-                continue
-
-            seen.add(key)
-
-            entities.append({
-                "name": name,
-                "type": typ
-            })
-
-        entity_names = {e["name"] for e in entities}
-
-        relationships = []
-
-        for r in out.get("relationships", []):
-            s = str(r.get("source", "")).strip()
-            t = str(r.get("target", "")).strip()
-            rel = str(r.get("relation", "")).strip()
-
-            if (
-                s in entity_names
-                and t in entity_names
-                and rel in allowed_relations
-            ):
-                relationships.append({
-                    "source": s,
-                    "target": t,
-                    "relation": rel
-                })
-
-        return {
-            "entities": entities,
-            "relationships": relationships
-        }
-
+        out = parse_json(await chat([{"role": "user", "content": prompt}], model="gpt-4o", max_tokens=1500))
+        return {"entities": out.get("entities", []), "relationships": out.get("relationships", [])}
     except Exception:
-        return {
-            "entities": [],
-            "relationships": []
-        }
+        return {"entities": [], "relationships": []}
 
 @app.post("/graph-query")
 async def graph_query(request: Request):
